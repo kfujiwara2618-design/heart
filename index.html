@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Luxury Heart AR Camera - Pro</title>
+  <title>Luxury Hanami AR Camera - Pro</title>
   <style>
     body {
       margin: 0;
@@ -290,37 +290,27 @@
     }
     loadAndProcessFrame();
 
-    // --- パーティクル（パステルカラーのハート ＆ ゴールドスパークル） ---
-    const pastelColors = [
-      { light: '#ffb7c5', dark: '#ff7b93' }, // ピンク
-      { light: '#ffdac1', dark: '#ff9aa2' }, // ピーチ
-      { light: '#e2f0cb', dark: '#b5ead7' }, // ミントグリーン
-      { light: '#c7ceea', dark: '#9795ef' }, // ラベンダー
-      { light: '#fff1c1', dark: '#ffd166' }  // パステルイエロー
-    ];
-
+    // --- パーティクル（桜 ＆ ゴールドスパークル） ---
     const particles = [];
     for (let i = 0; i < 35; i++) {
-      const colorObj = pastelColors[Math.floor(Math.random() * pastelColors.length)];
       particles.push({
-        type: 'heart',
+        type: 'petal',
         x: Math.random() * window.innerWidth,
         y: Math.random() * window.innerHeight,
         size: Math.random() * 12 + 8,
-        speedY: Math.random() * 1.2 + 0.5,
-        speedX: (Math.random() - 0.5) * 1.0,
+        speedY: Math.random() * 1.4 + 0.7,
+        speedX: (Math.random() - 0.5) * 1.2,
         rotation: Math.random() * 360,
-        rotSpeed: (Math.random() - 0.5) * 1.5,
+        rotSpeed: (Math.random() - 0.5) * 2.0,
         swaySpeed: Math.random() * 0.012 + 0.006,
-        swayAmp: Math.random() * 35 + 15,
+        swayAmp: Math.random() * 40 + 20,
         initialX: Math.random() * window.innerWidth,
         opacity: Math.random() * 0.35 + 0.65,
-        colorVariant: colorObj.light,
-        darkColor: colorObj.dark
+        colorVariant: Math.random() > 0.4 ? '#ffb7c5' : '#ffd1dc'
       });
     }
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 25; i++) {
       particles.push({
         type: 'sparkle',
         x: Math.random() * window.innerWidth,
@@ -334,7 +324,7 @@
 
     let timeCount = 0;
 
-    function drawHeart(ctx, p) {
+    function drawPetal(ctx, p) {
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate((p.rotation * Math.PI) / 180);
@@ -343,18 +333,20 @@
       const grad = ctx.createRadialGradient(0, -p.size * 0.2, 0, 0, 0, p.size * 1.2);
       grad.addColorStop(0, '#ffffff');
       grad.addColorStop(0.4, p.colorVariant);
-      grad.addColorStop(1, p.darkColor);
+      grad.addColorStop(1, '#ff7b93');
 
       ctx.fillStyle = grad;
       ctx.beginPath();
-      const s = p.size;
-      ctx.moveTo(0, s * 0.3);
-      ctx.bezierCurveTo(-s, -s * 0.5, -s * 1.2, s * 0.5, 0, s * 1.2);
-      ctx.bezierCurveTo(s * 1.2, s * 0.5, s, -s * 0.5, 0, s * 0.3);
+      ctx.moveTo(0, -p.size);
+      ctx.bezierCurveTo(p.size * 0.9, -p.size * 1.4, p.size * 1.2, p.size * 0.4, 0, p.size * 1.1);
+      ctx.bezierCurveTo(-p.size * 1.2, p.size * 0.4, -p.size * 0.9, -p.size * 1.4, 0, -p.size);
       ctx.fill();
 
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
       ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(0, -p.size * 0.7);
+      ctx.lineTo(0, p.size * 0.3);
       ctx.stroke();
 
       ctx.restore();
@@ -388,7 +380,7 @@
 
       particles.forEach((p, index) => {
         p.y += p.speedY;
-        if (p.type === 'heart') {
+        if (p.type === 'petal') {
           p.x = p.initialX + Math.sin(p.y * p.swaySpeed) * p.swayAmp;
           p.rotation += p.rotSpeed;
 
@@ -396,7 +388,7 @@
             p.y = -40;
             p.initialX = Math.random() * logicalWidth;
           }
-          drawHeart(ctx, p);
+          drawPetal(ctx, p);
         } else if (p.type === 'sparkle') {
           p.x += p.speedX;
           const pulse = 0.5 + Math.sin(timeCount * 5 + index * 1.5) * 0.5;
@@ -541,12 +533,12 @@
         saveCtx.drawImage(webcamEl, zoomSx, zoomSy, zoomSw, zoomSh, 0, 0, logicalWidth, logicalHeight);
       }
 
-      // 2. ARエフェクト（フレーム・ハート）はズームに影響されずそのまま美しく合成
+      // 2. ARエフェクト（フレーム・桜）はズームに影響されずそのまま美しく合成
       saveCtx.drawImage(arCanvas, 0, 0, logicalWidth, logicalHeight);
 
       // 3. 超高画質PNGとして保存
       const link = document.createElement('a');
-      link.download = 'luxury_heart_pro_' + Date.now() + '.png';
+      link.download = 'luxury_hanami_pro_' + Date.now() + '.png';
       link.href = saveCanvas.toDataURL('image/png', 1.0);
       link.click();
     }
