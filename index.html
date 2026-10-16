@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Luxury Heart AR Camera - Pro</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+      background: #000;
+      touch-action: none;
+    }
+    /* スマホカメラ映像（ズームはここだけに適用され、エフェクトに干渉しません） */
+    #webcam-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      z-index: 1;
+    }
+    #webcam {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scale(1);
+      transform-origin: center center;
+      transition: transform 0.05s linear;
+    }
+    /* AR演出・フレームを重ねるレイヤー（ズームの影響を受けない独立層） */
+    #ar-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 2;
+      pointer-events: none;
+    }
+    /* 高解像度対応Canvas */
+    #ar-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+    }
+    /* ラグジュアリーなステータス表示（グラスモーフィズム） */
+    #info-overlay {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 15, 15, 0.6);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      color: #f7f3ed;
+      padding: 8px 22px;
+      border-radius: 30px;
+      border: 1px solid rgba(228, 195, 139, 0.4);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      z-index: 10;
+      pointer-events: none;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      white-space: nowrap;
+    }
+    #status { font-weight: 500; color: #e4c38b; }
+
+    /* ズームインジケーター */
+    #zoom-indicator {
+      position: absolute;
+      top: 75px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(228, 195, 139, 0.3);
+      color: #e4c38b;
+      padding: 3px 12px;
+      border-radius: 12px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      z-index: 10;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    /* コントロールパネル（シャッター ＆ タイマーボタン） */
+    #controls-container {
+      position: absolute;
+      bottom: 35px;
+      left: 0;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 35px;
+      z-index: 10;
+    }
+
+    /* タイマー切り替えボタン */
+    .control-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(20, 20, 20, 0.65);
+      backdrop-filter: blur(10px);
+      border: 1.5px solid rgba(228, 195, 139, 0.5);
+      color: #e4c38b;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+      transition: all 0.2s ease;
+      outline: none;
+    }
+    .control-btn:active {
+      transform: scale(0.9);
+      background: rgba(228, 195, 139, 0.2);
+    }
+
+    /* 最高級メタリック調のシャッターボタン */
+    #shutter-btn {
+      width: 78px;
+      height: 78px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #ffffff 0%, #d8c4b6 50%, #b8977e 100%);
+      border: 3px solid rgba(228, 195, 139, 0.95);
+      cursor: pointer;
+      box-shadow: 0 12px 35px rgba(0,0,0,0.7), inset 0 2px 6px rgba(255,255,255,0.95);
+      transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.15s ease;
+      outline: none;
+    }
+    #shutter-btn:active {
+      transform: scale(0.92);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.5), inset 0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    /* カウントダウン表示オーバーレイ */
+    #countdown-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(4px);
+      z-index: 20;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    #countdown-text {
+      font-size: 80px;
+      font-weight: 300;
+      color: #e4c38b;
+      letter-spacing: 0.05em;
+      text-shadow: 0 0 30px rgba(228, 195, 139, 0.8);
+      transform: scale(0.8);
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    #countdown-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #countdown-overlay.active #countdown-text {
+      transform: scale(1);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- スマホのカメラ映像（ズーム対象） -->
+  <div id="webcam-container">
+    <video id="webcam" autoplay playsinline muted></video>
+  </div>
+
+  <!-- ARレイヤー（エフェクト層・ズームの影響を受けません） -->
+  <div id="ar-layer">
+    <canvas id="ar-canvas"></canvas>
+  </div>
+
+  <!-- ガイド・ステータス表示 -->
+  <div id="info-overlay">
+    <div>PRO EXPERIENCE: <span id="status">READY</span></div>
+    <div style="margin-top: 3px; font-size: 8.5px; color: rgba(255,255,255,0.55); letter-spacing: 0.05em;">2本指ピンチでカメラのみズーム</div>
+  </div>
+
+  <div id="zoom-indicator">ZOOM: 1.0x</div>
+
+  <!-- コントロールパネル -->
+  <div id="controls-container">
+    <button id="timer-btn" class="control-btn" title="Timer">OFF</button>
+    <button id="shutter-btn" title="Capture"></button>
+    <div style="width: 44px;"></div> <!-- バランス用の余白 -->
+  </div>
+
+  <!-- カウントダウン表示 -->
+  <div id="countdown-overlay">
+    <div id="countdown-text">3</div>
+  </div>
+
+  <script>
+    const webcamEl = document.getElementById('webcam');
+    const statusEl = document.getElementById('status');
+    const zoomIndicator = document.getElementById('zoom-indicator');
+    const arCanvas = document.getElementById('ar-canvas');
+    const ctx = arCanvas.getContext('2d');
+    const shutterBtn = document.getElementById('shutter-btn');
+    const timerBtn = document.getElementById('timer-btn');
+    const countdownOverlay = document.getElementById('countdown-overlay');
+    const countdownText = document.getElementById('countdown-text');
+
+    // --- 高解像度 (Retina) 対応のCanvasリサイズ処理 ---
+    let dpr = window.devicePixelRatio || 1;
+
+    function resizeCanvas() {
+      dpr = window.devicePixelRatio || 1;
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      arCanvas.width = width * dpr;
+      arCanvas.height = height * dpr;
+      arCanvas.style.width = width + 'px';
+      arCanvas.style.height = height + 'px';
+      ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // カメラ起動
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false
+        });
+        webcamEl.srcObject = stream;
+      } catch (err) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          });
+          webcamEl.srcObject = stream;
+        } catch (e) {
+          statusEl.textContent = "CAMERA ERROR";
+          console.error(e);
+        }
+      }
+    }
+    initCamera();
+
+    // 1.png を読み込み、白背景を高精度透過処理
+    let processedFrameImg = null;
+    function loadAndProcessFrame() {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = img.naturalWidth || img.width;
+        tempCanvas.height = img.naturalHeight || img.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(img, 0, 0);
+
+        const imgData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        const data = imgData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i+1], b = data[i+2];
+          if (r > 200 && g > 200 && b > 200) {
+            data[i+3] = 0; 
+          }
+        }
+        tempCtx.putImageData(imgData, 0, 0);
+        processedFrameImg = tempCanvas;
+      };
+      img.src = '1.png';
+    }
+    loadAndProcessFrame();
+
+    // --- パーティクル（パステルカラーのハート ＆ ゴールドスパークル） ---
+    const pastelColors = [
+      { light: '#ffb7c5', dark: '#ff7b93' }, // ピンク
+      { light: '#ffdac1', dark: '#ff9aa2' }, // ピーチ
+      { light: '#e2f0cb', dark: '#b5ead7' }, // ミントグリーン
+      { light: '#c7ceea', dark: '#9795ef' }, // ラベンダー
+      { light: '#fff1c1', dark: '#ffd166' }  // パステルイエロー
+    ];
+
+    const particles = [];
+    for (let i = 0; i < 35; i++) {
+      const colorObj = pastelColors[Math.floor(Math.random() * pastelColors.length)];
+      particles.push({
+        type: 'heart',
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        size: Math.random() * 12 + 8,
+        speedY: Math.random() * 1.2 + 0.5,
+        speedX: (Math.random() - 0.5) * 1.0,
+        rotation: Math.random() * 360,
+        rotSpeed: (Math.random() - 0.5) * 1.5,
+        swaySpeed: Math.random() * 0.012 + 0.006,
+        swayAmp: Math.random() * 35 + 15,
+        initialX: Math.random() * window.innerWidth,
+        opacity: Math.random() * 0.35 + 0.65,
+        colorVariant: colorObj.light,
+        darkColor: colorObj.dark
+      });
+    }
+
+    for (let i = 0; i < 20; i++) {
+      particles.push({
+        type: 'sparkle',
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        size: Math.random() * 3.5 + 1.2,
+        speedY: Math.random() * 0.7 + 0.2,
+        speedX: (Math.random() - 0.5) * 0.4,
+        opacity: Math.random() * 0.8 + 0.2
+      });
+    }
+
+    let timeCount = 0;
+
+    function drawHeart(ctx, p) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate((p.rotation * Math.PI) / 180);
+      ctx.globalAlpha = p.opacity;
+
+      const grad = ctx.createRadialGradient(0, -p.size * 0.2, 0, 0, 0, p.size * 1.2);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.4, p.colorVariant);
+      grad.addColorStop(1, p.darkColor);
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      const s = p.size;
+      ctx.moveTo(0, s * 0.3);
+      ctx.bezierCurveTo(-s, -s * 0.5, -s * 1.2, s * 0.5, 0, s * 1.2);
+      ctx.bezierCurveTo(s * 1.2, s * 0.5, s, -s * 0.5, 0, s * 0.3);
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function renderLoop() {
+      timeCount += 0.016;
+      const logicalWidth = window.innerWidth;
+      const logicalHeight = window.innerHeight;
+
+      ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+
+      // フレーム描画（エフェクト層なのでズームの影響を受けず常に綺麗に中央に固定）
+      const floatOffsetY = Math.sin(timeCount * 1.5) * 6;
+      const baseW = Math.min(logicalWidth * 0.75, 420);
+      const baseH = baseW * 1.414;
+      const frameX = (logicalWidth - baseW) / 2;
+      const frameY = (logicalHeight - baseH) / 2 + floatOffsetY;
+
+      if (processedFrameImg) {
+        ctx.save();
+        ctx.shadowColor = 'rgba(228, 195, 139, 0.65)';
+        ctx.shadowBlur = 35;
+        ctx.drawImage(processedFrameImg, frameX, frameY, baseW, baseH);
+        ctx.restore();
+      } else {
+        ctx.strokeStyle = 'rgba(228, 195, 139, 0.85)';
+        ctx.lineWidth = 5;
+        ctx.strokeRect(frameX, frameY, baseW, baseH);
+      }
+
+      particles.forEach((p, index) => {
+        p.y += p.speedY;
+        if (p.type === 'heart') {
+          p.x = p.initialX + Math.sin(p.y * p.swaySpeed) * p.swayAmp;
+          p.rotation += p.rotSpeed;
+
+          if (p.y > logicalHeight + 40) {
+            p.y = -40;
+            p.initialX = Math.random() * logicalWidth;
+          }
+          drawHeart(ctx, p);
+        } else if (p.type === 'sparkle') {
+          p.x += p.speedX;
+          const pulse = 0.5 + Math.sin(timeCount * 5 + index * 1.5) * 0.5;
+          const currentAlpha = Math.max(0, p.opacity * pulse);
+
+          if (p.y > logicalHeight + 20) {
+            p.y = -20;
+            p.x = Math.random() * logicalWidth;
+          }
+
+          ctx.save();
+          ctx.globalAlpha = currentAlpha;
+          ctx.fillStyle = '#ffea9f';
+          ctx.shadowColor = '#fff3bf';
+          ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      });
+
+      requestAnimationFrame(renderLoop);
+    }
+    renderLoop();
+
+    // --- カメラ専用 ズーム機能（ピンチ操作でカメラの映像のみ拡大縮小） ---
+    let cameraZoom = 1.0;
+    let initialDistance = null;
+    let initialZoom = 1.0;
+    let zoomHideTimer = null;
+
+    window.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        initialDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        initialZoom = cameraZoom;
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && initialDistance !== null && initialDistance > 0) {
+        const currentDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const factor = currentDistance / initialDistance;
+        cameraZoom = Math.max(1.0, Math.min(4.0, initialZoom * factor));
+        
+        // カメラ映像のみにズームを反映
+        webcamEl.style.transform = `scale(${cameraZoom})`;
+
+        // ズームインジケーターを表示
+        zoomIndicator.textContent = `ZOOM: ${cameraZoom.toFixed(1)}x`;
+        zoomIndicator.style.opacity = '1';
+        clearTimeout(zoomHideTimer);
+        zoomHideTimer = setTimeout(() => {
+          zoomIndicator.style.opacity = '0';
+        }, 1200);
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) {
+        initialDistance = null;
+      }
+    });
+
+    // --- ラグジュアリー・タイマー機能 ---
+    const timerModes = ['OFF', '3s', '5s'];
+    let currentTimerIndex = 0;
+
+    timerBtn.addEventListener('click', () => {
+      currentTimerIndex = (currentTimerIndex + 1) % timerModes.length;
+      timerBtn.textContent = timerModes[currentTimerIndex];
+      timerBtn.style.borderColor = currentTimerIndex === 0 ? 'rgba(228, 195, 139, 0.5)' : '#e4c38b';
+    });
+
+    // シャッターボタンのクリック処理（タイマー連動）
+    shutterBtn.addEventListener('click', () => {
+      const mode = timerModes[currentTimerIndex];
+      if (mode === 'OFF') {
+        executeCapture();
+      } else {
+        const seconds = parseInt(mode);
+        startCountdown(seconds);
+      }
+    });
+
+    function startCountdown(sec) {
+      let remaining = sec;
+      countdownText.textContent = remaining;
+      countdownOverlay.classList.add('active');
+
+      const timerInterval = setInterval(() => {
+        remaining--;
+        if (remaining > 0) {
+          countdownText.textContent = remaining;
+        } else {
+          clearInterval(timerInterval);
+          countdownOverlay.classList.remove('active');
+          executeCapture();
+        }
+      }, 1000);
+    }
+
+    // 写真撮影・高解像度合成保存処理
+    function executeCapture() {
+      const saveCanvas = document.createElement('canvas');
+      const logicalWidth = window.innerWidth;
+      const logicalHeight = window.innerHeight;
+      
+      saveCanvas.width = logicalWidth * dpr;
+      saveCanvas.height = logicalHeight * dpr;
+      const saveCtx = saveCanvas.getContext('2d');
+      saveCtx.scale(dpr, dpr);
+
+      // 1. ズーム状態を反映したカメラ映像を正しく切り抜いて合成
+      if (webcamEl.readyState === webcamEl.HAVE_ENOUGH_DATA) {
+        const vW = webcamEl.videoWidth;
+        const vH = webcamEl.videoHeight;
+        const vRatio = vW / vH;
+        const cRatio = logicalWidth / logicalHeight;
+
+        let sw = vW, sh = vH, sx = 0, sy = 0;
+        if (vRatio > cRatio) {
+          sw = vH * cRatio;
+          sx = (vW - sw) / 2;
+        } else {
+          sh = vW / cRatio;
+          sy = (vH - sh) / 2;
+        }
+
+        // ズーム（cameraZoom）による切り抜き範囲の縮小
+        const zoomSw = sw / cameraZoom;
+        const zoomSh = sh / cameraZoom;
+        const zoomSx = sx + (sw - zoomSw) / 2;
+        const zoomSy = sy + (sh - zoomSh) / 2;
+
+        saveCtx.drawImage(webcamEl, zoomSx, zoomSy, zoomSw, zoomSh, 0, 0, logicalWidth, logicalHeight);
+      }
+
+      // 2. ARエフェクト（フレーム・ハート）はズームに影響されずそのまま美しく合成
+      saveCtx.drawImage(arCanvas, 0, 0, logicalWidth, logicalHeight);
+
+      // 3. 超高画質PNGとして保存
+      const link = document.createElement('a');
+      link.download = 'luxury_heart_pro_' + Date.now() + '.png';
+      link.href = saveCanvas.toDataURL('image/png', 1.0);
+      link.click();
+    }
+  </script>
+</body>
+</html>
