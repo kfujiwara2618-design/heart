@@ -15,7 +15,7 @@
       user-select: none;
       -webkit-user-select: none;
     }
-    /* スマホカメラ映像（ズームはCSS transformでカメラのみに適用、ARは独立） */
+    /* スマホカメラ映像（ズーム＆インカメの左右反転はカメラのみに適用、ARは独立） */
     #webcam-container {
       position: absolute;
       top: 0;
@@ -33,7 +33,7 @@
       transform-origin: center center;
       transition: transform 0.2s ease-out;
     }
-    /* AR演出・フレームを重ねるレイヤー（カメラのズームに影響されない独立レイヤー） */
+    /* AR演出・フレームを重ねるレイヤー（カメラのズーム・反転に影響されない独立レイヤー） */
     #ar-layer {
       position: absolute;
       top: 0;
@@ -73,7 +73,7 @@
     }
     #status { font-weight: 500; color: #e4c38b; }
 
-    /* プロ仕様カメラコントロールパネル（ズーム ＆ タイマー） */
+    /* プロ仕様カメラコントロールパネル（ズーム・タイマー・カメラ切替・原点復帰） */
     #pro-controls {
       position: absolute;
       top: 65px;
@@ -111,6 +111,15 @@
       color: #000;
       font-weight: bold;
       border-color: #e4c38b;
+    }
+    .ctrl-btn.action-btn {
+      background: rgba(228, 195, 139, 0.2);
+      color: #e4c38b;
+      font-weight: bold;
+    }
+    .ctrl-btn.action-btn:active {
+      background: rgba(228, 195, 139, 0.8);
+      color: #000;
     }
     .ctrl-label {
       color: #e4c38b;
@@ -211,12 +220,12 @@
 </head>
 <body>
 
-  <!-- スマホのカメラ映像（ズーム適用コンテナ） -->
+  <!-- スマホのカメラ映像（ズーム・インカメ反転適用コンテナ） -->
   <div id="webcam-container">
     <video id="webcam" autoplay playsinline muted></video>
   </div>
 
-  <!-- ARレイヤー（カメラズームとは完全に独立） -->
+  <!-- ARレイヤー（カメラ操作とは完全に独立） -->
   <div id="ar-layer">
     <canvas id="ar-canvas"></canvas>
   </div>
@@ -226,7 +235,7 @@
     <div>PRO CAMERA: <span id="status">READY</span></div>
   </div>
 
-  <!-- プロ仕様カメラコントロールパネル（ズーム ＆ タイマー） -->
+  <!-- プロ仕様カメラコントロールパネル -->
   <div id="pro-controls">
     <div class="control-group">
       <span class="ctrl-label">ZOOM</span>
@@ -239,6 +248,10 @@
       <button class="ctrl-btn active" onclick="setTimer(0)">OFF</button>
       <button class="ctrl-btn" onclick="setTimer(3)">3s</button>
       <button class="ctrl-btn" onclick="setTimer(5)">5s</button>
+    </div>
+    <div class="control-group">
+      <button class="ctrl-btn action-btn" onclick="toggleCamera()">🔄 カメラ切替</button>
+      <button class="ctrl-btn action-btn" onclick="resetToOrigin()">↩ 原点復帰</button>
     </div>
   </div>
 
@@ -278,11 +291,18 @@
     let currentTimer = 0; // 秒数 (0, 3, 5)
     let frameScale = 1.0;
     let effectIntensity = 1.0;
+    let currentFacingMode = 'environment'; // 初期値：アウトカメラ ('environment')
 
-    // ズーム設定（カメラ映像にのみ影響し、ARには干渉しない）
+    // カメラ映像の変形（ズーム ＋ インカメ時の左右反転ミラーリング）を更新する関数
+    function updateWebcamTransform() {
+      const scaleX = currentFacingMode === 'user' ? -1 : 1;
+      webcamEl.style.transform = `scaleX(${scaleX}) scale(${currentZoom})`;
+    }
+
+    // ズーム設定（カメラのみに影響し、ARには干渉しない）
     function setZoom(zoom) {
       currentZoom = zoom;
-      webcamEl.style.transform = `scale(${zoom})`;
+      updateWebcamTransform();
       
       document.querySelectorAll('#pro-controls .control-group:nth-child(1) .ctrl-btn').forEach(btn => {
         btn.classList.remove('active');
@@ -303,6 +323,54 @@
         }
       });
       statusEl.textContent = sec === 0 ? 'READY' : `TIMER ${sec}s`;
+    }
+
+    // インカメ・アウトカメラの切り替え機能
+    async function toggleCamera() {
+      currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
+      
+      if (webcamEl.srcObject) {
+        webcamEl.srcObject.getTracks().forEach(track => track.stop());
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: currentFacingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false
+        });
+        webcamEl.srcObject = stream;
+        updateWebcamTransform();
+        statusEl.textContent = currentFacingMode === 'environment' ? 'REAR CAM' : 'FRONT CAM';
+      } catch (err) {
+        try {
+          // フォールバック（exactが使えない端末用）
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: currentFacingMode },
+            audio: false
+          });
+          webcamEl.srcObject = stream;
+          updateWebcamTransform();
+          statusEl.textContent = currentFacingMode === 'environment' ? 'REAR CAM' : 'FRONT CAM';
+        } catch (e) {
+          statusEl.textContent = 'CAMERA ERROR';
+          console.error(e);
+        }
+      }
+    }
+
+    // 原点復帰機能（ズーム、フレームサイズ、エフェクト強弱を初期値にリセット）
+    function resetToOrigin() {
+      setZoom(1.0);
+      setTimer(0);
+      frameScale = 1.0;
+      scaleSlider.value = 1.0;
+      effectIntensity = 1.0;
+      intensitySlider.value = 1.0;
+      
+      statusEl.textContent = "RESETTED";
+      setTimeout(() => {
+        statusEl.textContent = "READY";
+      }, 1200);
     }
 
     // スライダー操作の連動
@@ -330,7 +398,7 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // カメラ（背面カメラ優先）の起動
+    // カメラの初期起動
     async function initCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -338,6 +406,7 @@
           audio: false
         });
         webcamEl.srcObject = stream;
+        updateWebcamTransform();
         statusEl.textContent = "READY";
       } catch (err) {
         try {
@@ -346,6 +415,7 @@
             audio: false
           });
           webcamEl.srcObject = stream;
+          updateWebcamTransform();
           statusEl.textContent = "READY";
         } catch (e) {
           statusEl.textContent = "CAMERA ERROR";
@@ -557,7 +627,7 @@
       }, 1000);
     }
 
-    // 撮影・合成保存処理（カメラのズーム倍率とARエフェクトを正確に合成）
+    // 撮影・合成保存処理（カメラのズーム倍率・インカメ反転・ARエフェクトを正確に合成）
     function executeCapture() {
       const saveCanvas = document.createElement('canvas');
       const logicalWidth = window.innerWidth;
@@ -568,7 +638,7 @@
       const saveCtx = saveCanvas.getContext('2d');
       saveCtx.scale(dpr, dpr);
 
-      // 1. カメラ背景映像を高画質描画（ズームを正確に反映）
+      // 1. カメラ背景映像を高画質描画（ズームおよびインカメ反転を正確に反映）
       if (webcamEl.readyState === webcamEl.HAVE_ENOUGH_DATA) {
         const vRatio = webcamEl.videoWidth / webcamEl.videoHeight;
         const cRatio = logicalWidth / logicalHeight;
@@ -583,7 +653,9 @@
 
         saveCtx.save();
         saveCtx.translate(logicalWidth / 2, logicalHeight / 2);
-        saveCtx.scale(currentZoom, currentZoom);
+        // インカメのときは左右反転、かつズームを適用
+        const mirrorX = currentFacingMode === 'user' ? -1 : 1;
+        saveCtx.scale(mirrorX * currentZoom, currentZoom);
         saveCtx.translate(-logicalWidth / 2, -logicalHeight / 2);
         
         saveCtx.drawImage(webcamEl, x, y, w, h);
