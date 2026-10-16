@@ -13,7 +13,7 @@
       background: #000;
       touch-action: none;
     }
-    /* スマホカメラ映像（ズームはビデオ要素のみに干渉） */
+    /* スマホカメラ映像 */
     #webcam {
       position: absolute;
       top: 0;
@@ -25,7 +25,7 @@
       transform-origin: center center;
       transition: transform 0.2s ease-out;
     }
-    /* AR演出・フレームを重ねるレイヤー */
+    /* AR演出レイヤー */
     #ar-layer {
       position: absolute;
       top: 0;
@@ -43,7 +43,7 @@
       width: 100vw;
       height: 100vh;
     }
-    /* ラグジュアリーなトップコントロールバー */
+    /* トップコントロールバー */
     #top-controls {
       position: absolute;
       top: 15px;
@@ -100,7 +100,7 @@
     }
     #status { font-weight: 500; color: #e4c38b; }
 
-    /* 最高級メタリック調のシャッターボタン＆下部コントロール */
+    /* シャッターボタン＆下部コントロール */
     #shutter-container {
       position: absolute;
       bottom: 40px;
@@ -145,7 +145,7 @@
   </div>
 
   <div id="info-overlay">
-    PRO MODE: <span id="status">READY</span> | フレームはドラッグで移動・2本指で拡大縮小
+    PRO MODE: <span id="status">READY</span> | エフェクト強弱はFXボタンで切り替え
   </div>
 
   <!-- ARレイヤー -->
@@ -233,99 +233,49 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // --- フレーム画像処理の削除 ---
-    // (1.pngの読み込み、処理、関連変数を削除)
-
-    // --- フレームの位置・サイズ・タッチ操作（ドラッグ＆ピンチ）の管理 ---
-    let frameScale = 1.0;
-    let frameOffsetX = 0; // 画面中心からのオフセットX
-    let frameOffsetY = 0; // 画面中心からのオフセットY
-
-    let isDragging = false;
-    let dragStartX = 0;
-    let dragStartY = 0;
-
-    let initialDistance = null;
-    let initialScale = 1.0;
-
-    // エフェクト強弱設定 (1: Low, 2: Mid, 3: High)
-    let effectPowerLevel = 2;
+    // --- エフェクト強弱設定 ---
+    let effectPowerLevel = 2; // 1: Low, 2: Mid, 3: High
     function toggleEffectPower() {
       effectPowerLevel = (effectPowerLevel % 3) + 1;
       const names = { 1: 'Low', 2: 'Mid', 3: 'High' };
       document.getElementById('effect-btn').textContent = `FX: ${names[effectPowerLevel]}`;
     }
 
-    // タッチ・マウス操作イベント（フレームのドラッグ移動 ＆ 2本指ピンチ拡大縮小）
-    window.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 1) {
-        isDragging = true;
-        dragStartX = e.touches[0].clientX - frameOffsetX;
-        dragStartY = e.touches[0].clientY - frameOffsetY;
-      } else if (e.touches.length === 2) {
-        isDragging = false;
-        initialDistance = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        initialScale = frameScale;
-      }
-    }, { passive: true });
-
-    window.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 1 && isDragging) {
-        frameOffsetX = e.touches[0].clientX - dragStartX;
-        frameOffsetY = e.touches[0].clientY - dragStartY;
-      } else if (e.touches.length === 2 && initialDistance !== null && initialDistance > 0) {
-        const currentDistance = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        const factor = currentDistance / initialDistance;
-        frameScale = Math.max(0.4, Math.min(2.5, initialScale * factor));
-      }
-    }, { passive: true });
-
-    window.addEventListener('touchend', (e) => {
-      if (e.touches.length === 0) isDragging = false;
-      if (e.touches.length < 2) initialDistance = null;
-    });
-
     // --- ハートパーティクルシステム（色とりどりパステルカラー、サイズ違い） ---
     const particles = [];
     const pastelColors = ['#FFB6C1', '#FFD1DC', '#FFCCFF', '#E6E6FA', '#D8BFD8', '#B0E0E6', '#98FB98', '#FFFFE0']; // 7色+αのパステル
 
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < 100; i++) { // パーティクル数を増加
       particles.push({
         type: 'heart',
         x: Math.random() * window.innerWidth,
         y: Math.random() * window.innerHeight,
-        size: Math.random() * 15 + 6, // サイズ違い
-        speedY: Math.random() * 1.6 + 0.6,
-        speedX: (Math.random() - 0.5) * 1.0,
-        rotation: Math.random() * 360,
-        rotSpeed: (Math.random() - 0.5) * 1.8,
-        opacity: Math.random() * 0.4 + 0.5,
-        color: pastelColors[Math.floor(Math.random() * pastelColors.length)] // 初期色（描画時に上書き）
+        size: Math.random() * 20 + 8, // サイズ違い
+        speedY: Math.random() * 2.0 + 1.0, // 落下速度を調整
+        speedX: (Math.random() - 0.5) * 1.5, // 横方向の動きを調整
+        opacity: Math.random() * 0.5 + 0.5, // 透明度を調整
+        color: pastelColors[Math.floor(Math.random() * pastelColors.length)] // 色とりどり
       });
     }
 
     let timeCount = 0;
 
-    // ハート描画関数
+    // かわいいハート描画関数
     function drawHeart(ctx, x, y, size, color, opacity) {
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate((timeCount * 0.2) + x * 0.01); // 軽く揺らす
+      ctx.rotate((timeCount * 0.2) + x * 0.01); // 揺らす
       ctx.globalAlpha = opacity;
       ctx.fillStyle = color;
       ctx.beginPath();
-      const d = size / 2;
-      ctx.moveTo(0, d / 2);
-      ctx.bezierCurveTo(0, 0, d, 0, d, d / 2);
-      ctx.bezierCurveTo(d, d, 0, d * 1.5, 0, size);
-      ctx.bezierCurveTo(0, d * 1.5, -d, d, -d, d / 2);
-      ctx.bezierCurveTo(-d, 0, 0, 0, 0, d / 2);
+      // よりかわいいハートの形
+      const width = size;
+      const height = size * 0.9;
+      ctx.moveTo(0, height * 0.3);
+      ctx.bezierCurveTo(0, 0, -width * 0.5, 0, -width * 0.5, height * 0.3);
+      ctx.bezierCurveTo(-width * 0.5, height * 0.6, -width * 0.2, height * 0.8, 0, height);
+      ctx.bezierCurveTo(width * 0.2, height * 0.8, width * 0.5, height * 0.6, width * 0.5, height * 0.3);
+      ctx.bezierCurveTo(width * 0.5, 0, 0, 0, 0, height * 0.3);
       ctx.fill();
       ctx.restore();
     }
@@ -338,53 +288,23 @@
 
       ctx.clearRect(0, 0, logicalWidth, logicalHeight);
 
-      // --- A. フレームの描画（色変化矩形のみ） ---
-      const floatOffsetY = Math.sin(timeCount * 1.5) * 6;
-      const baseW = Math.min(logicalWidth * 0.75, 420) * frameScale;
-      const baseH = baseW * 1.414; // アスペクト比
-      const frameX = (logicalWidth - baseW) / 2 + frameOffsetX;
-      const frameY = (logicalHeight - baseH) / 2 + floatOffsetY + frameOffsetY;
-
-      // ゆっくり7色に変化させるロジック (HSLを使用)
-      const frameHue = (timeCount * 40) % 360; // 変化速度
-      const frameColor = 'hsl(' + frameHue + ', 80%, 75%)'; // パステル調
-
-      ctx.save();
-      ctx.shadowColor = 'hsl(' + frameHue + ', 80%, 65%)'; // 影の色も合わせる
-      ctx.shadowBlur = 45;
-
-      // 矩形フレーム描画
-      ctx.strokeStyle = frameColor;
-      ctx.lineWidth = 5;
-      ctx.strokeRect(frameX, frameY, baseW, baseH);
-
-      ctx.restore();
-
-      // --- B. パーティクルの描写（ハートエフェクト） ---
+      // --- パーティクルの描写（ハートエフェクト） ---
       const activeCount = effectPowerLevel === 1 ? 0.4 : (effectPowerLevel === 2 ? 0.7 : 1.2);
 
-      // ハート全体の色変化用の基準色相 (ゆっくり)
-      const heartBaseHue = (timeCount * 20) % 360; 
-
-      particles.forEach((p, index) => {
-        // 動きの更新
+      particles.forEach((p) => {
         p.y += p.speedY * activeCount;
         p.x += p.speedX * activeCount * 0.5;
-        p.rotation += p.rotSpeed * activeCount;
 
         // 画面外リセット
         if (p.y > logicalHeight + 40 || p.x < -40 || p.x > logicalWidth + 40) {
           p.y = -40;
           p.x = Math.random() * logicalWidth;
-          // 初期色は設定したままで、描画時にHSLで計算する
+          p.color = pastelColors[Math.floor(Math.random() * pastelColors.length)];
         }
 
         // ハート描画
         if (effectPowerLevel > 0) {
-          // パーティクルごとの色計算（色とりどり + ゆっくり全体変化）
-          const currentHue = (heartBaseHue + index * 10 + p.x * 0.1) % 360; // インデックスと位置でオフセット
-          const color = `hsl(${currentHue}, 70%, 80%)`; // パステル調
-          drawHeart(ctx, p.x, p.y, p.size, color, p.opacity);
+          drawHeart(ctx, p.x, p.y, p.size, p.color, p.opacity);
         }
       });
 
@@ -392,7 +312,7 @@
     }
     renderLoop();
 
-    // --- シャッター機能（カメラズーム・フレーム位置を正確に合成して保存） ---
+    // --- シャッター機能（カメラズーム・エフェクトを正確に合成して保存） ---
     shutterBtn.addEventListener('click', () => {
       const saveCanvas = document.createElement('canvas');
       const logicalWidth = window.innerWidth;
@@ -428,7 +348,7 @@
         saveCtx.restore();
       }
 
-      // 2. 現在のAR演出（移動・サイズ変更されたフレーム ＆ ハートエフェクト）を合成
+      // 2. 現在のAR演出（ハートエフェクト）を合成
       saveCtx.drawImage(arCanvas, 0, 0, logicalWidth, logicalHeight);
 
       // 3. 超高画質保存
