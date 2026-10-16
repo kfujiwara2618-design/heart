@@ -233,46 +233,8 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // --- 1.png の読み込み＆高精度透過処理、色変化用Canvas ---
-    let processedFrameImg = null;
-    let frameColorCanvas = null;
-    let frameColorCtx = null;
-
-    function loadAndProcessFrame() {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = img.naturalWidth || img.width;
-        tempCanvas.height = img.naturalHeight || img.height;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.drawImage(img, 0, 0);
-
-        const imgData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-        const data = imgData.data;
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i+1], b = data[i+2];
-          // 白っぽい部分を透明にする処理（元の1.pngに依存）
-          if (r > 200 && g > 200 && b > 200) {
-            data[i+3] = 0; 
-          }
-        }
-        tempCtx.putImageData(imgData, 0, 0);
-        processedFrameImg = tempCanvas;
-
-        // 色変化用テンポラリCanvasの準備
-        frameColorCanvas = document.createElement('canvas');
-        frameColorCanvas.width = processedFrameImg.width;
-        frameColorCanvas.height = processedFrameImg.height;
-        frameColorCtx = frameColorCanvas.getContext('2d');
-      };
-      img.onerror = () => {
-          console.error('1.png failed to load. Please make sure the image is in the correct path.');
-          statusEl.textContent = "FRAME ERROR";
-      };
-      img.src = '1.png'; // 1.pngはユーザーが用意
-    }
-    loadAndProcessFrame();
+    // --- フレーム画像処理の削除 ---
+    // (1.pngの読み込み、処理、関連変数を削除)
 
     // --- フレームの位置・サイズ・タッチ操作（ドラッグ＆ピンチ）の管理 ---
     let frameScale = 1.0;
@@ -344,13 +306,13 @@
         rotation: Math.random() * 360,
         rotSpeed: (Math.random() - 0.5) * 1.8,
         opacity: Math.random() * 0.4 + 0.5,
-        color: pastelColors[Math.floor(Math.random() * pastelColors.length)] // 色とりどり
+        color: pastelColors[Math.floor(Math.random() * pastelColors.length)] // 初期色（描画時に上書き）
       });
     }
 
     let timeCount = 0;
 
-    // ハート描画関数 (1.pngのハートの形を参考に汎用的な形で実装)
+    // ハート描画関数
     function drawHeart(ctx, x, y, size, color, opacity) {
       ctx.save();
       ctx.translate(x, y);
@@ -376,47 +338,36 @@
 
       ctx.clearRect(0, 0, logicalWidth, logicalHeight);
 
-      // --- A. フレームの描画（色変化実装） ---
+      // --- A. フレームの描画（色変化矩形のみ） ---
       const floatOffsetY = Math.sin(timeCount * 1.5) * 6;
       const baseW = Math.min(logicalWidth * 0.75, 420) * frameScale;
       const baseH = baseW * 1.414; // アスペクト比
       const frameX = (logicalWidth - baseW) / 2 + frameOffsetX;
       const frameY = (logicalHeight - baseH) / 2 + floatOffsetY + frameOffsetY;
 
-      if (processedFrameImg && frameColorCanvas) {
-        // ゆっくり7色に変化させるロジック (HSLを使用)
-        const hue = (timeCount * 40) % 360; // 変化速度
-        const color = 'hsl(' + hue + ', 80%, 75%)'; // パステル調
+      // ゆっくり7色に変化させるロジック (HSLを使用)
+      const frameHue = (timeCount * 40) % 360; // 変化速度
+      const frameColor = 'hsl(' + frameHue + ', 80%, 75%)'; // パステル調
 
-        ctx.save();
-        ctx.shadowColor = 'hsl(' + hue + ', 80%, 65%)'; // 影の色も合わせる
-        ctx.shadowBlur = 45;
+      ctx.save();
+      ctx.shadowColor = 'hsl(' + frameHue + ', 80%, 65%)'; // 影の色も合わせる
+      ctx.shadowBlur = 45;
 
-        // 色変化の実装 (globalCompositeOperation)
-        frameColorCtx.clearRect(0, 0, frameColorCanvas.width, frameColorCanvas.height);
-        frameColorCtx.fillStyle = color;
-        frameColorCtx.fillRect(0, 0, frameColorCanvas.width, frameColorCanvas.height);
+      // 矩形フレーム描画
+      ctx.strokeStyle = frameColor;
+      ctx.lineWidth = 5;
+      ctx.strokeRect(frameX, frameY, baseW, baseH);
 
-        tempCtx.globalCompositeOperation = 'destination-in';
-        frameColorCtx.drawImage(processedFrameImg, 0, 0);
-        frameColorCtx.globalCompositeOperation = 'source-over'; // リセット
-
-        // メインCanvasに描画 (位置、サイズを反映)
-        ctx.drawImage(frameColorCanvas, frameX, frameY, baseW, baseH);
-
-        ctx.restore();
-      } else if (!processedFrameImg) {
-        // 画像がない場合のフォールバックフレーム
-        const hue = (timeCount * 40) % 360;
-        ctx.strokeStyle = 'hsl(' + hue + ', 80%, 75%)';
-        ctx.lineWidth = 5;
-        ctx.strokeRect(frameX, frameY, baseW, baseH);
-      }
+      ctx.restore();
 
       // --- B. パーティクルの描写（ハートエフェクト） ---
       const activeCount = effectPowerLevel === 1 ? 0.4 : (effectPowerLevel === 2 ? 0.7 : 1.2);
 
+      // ハート全体の色変化用の基準色相 (ゆっくり)
+      const heartBaseHue = (timeCount * 20) % 360; 
+
       particles.forEach((p, index) => {
+        // 動きの更新
         p.y += p.speedY * activeCount;
         p.x += p.speedX * activeCount * 0.5;
         p.rotation += p.rotSpeed * activeCount;
@@ -425,12 +376,15 @@
         if (p.y > logicalHeight + 40 || p.x < -40 || p.x > logicalWidth + 40) {
           p.y = -40;
           p.x = Math.random() * logicalWidth;
-          p.color = pastelColors[Math.floor(Math.random() * pastelColors.length)];
+          // 初期色は設定したままで、描画時にHSLで計算する
         }
 
         // ハート描画
         if (effectPowerLevel > 0) {
-          drawHeart(ctx, p.x, p.y, p.size, p.color, p.opacity);
+          // パーティクルごとの色計算（色とりどり + ゆっくり全体変化）
+          const currentHue = (heartBaseHue + index * 10 + p.x * 0.1) % 360; // インデックスと位置でオフセット
+          const color = `hsl(${currentHue}, 70%, 80%)`; // パステル調
+          drawHeart(ctx, p.x, p.y, p.size, color, p.opacity);
         }
       });
 
@@ -474,7 +428,7 @@
         saveCtx.restore();
       }
 
-      // 2. 現在のAR演出（移動・サイズ変更された色変化フレーム ＆ ハートエフェクト）を合成
+      // 2. 現在のAR演出（移動・サイズ変更されたフレーム ＆ ハートエフェクト）を合成
       saveCtx.drawImage(arCanvas, 0, 0, logicalWidth, logicalHeight);
 
       // 3. 超高画質保存
