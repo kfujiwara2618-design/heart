@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Luxury Pro AR Camera - High Definition</title>
+  <title>Luxury Pro AR Camera - Heart HD</title>
   <style>
     body {
       margin: 0;
@@ -233,8 +233,11 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // --- 1.png の読み込み＆高精度透過処理 ---
+    // --- 1.png の読み込み＆高精度透過処理、色変化用Canvas ---
     let processedFrameImg = null;
+    let frameColorCanvas = null;
+    let frameColorCtx = null;
+
     function loadAndProcessFrame() {
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -249,14 +252,25 @@
         const data = imgData.data;
         for (let i = 0; i < data.length; i += 4) {
           const r = data[i], g = data[i+1], b = data[i+2];
+          // 白っぽい部分を透明にする処理（元の1.pngに依存）
           if (r > 200 && g > 200 && b > 200) {
             data[i+3] = 0; 
           }
         }
         tempCtx.putImageData(imgData, 0, 0);
         processedFrameImg = tempCanvas;
+
+        // 色変化用テンポラリCanvasの準備
+        frameColorCanvas = document.createElement('canvas');
+        frameColorCanvas.width = processedFrameImg.width;
+        frameColorCanvas.height = processedFrameImg.height;
+        frameColorCtx = frameColorCanvas.getContext('2d');
       };
-      img.src = '1.png';
+      img.onerror = () => {
+          console.error('1.png failed to load. Please make sure the image is in the correct path.');
+          statusEl.textContent = "FRAME ERROR";
+      };
+      img.src = '1.png'; // 1.pngはユーザーが用意
     }
     loadAndProcessFrame();
 
@@ -315,65 +329,42 @@
       if (e.touches.length < 2) initialDistance = null;
     });
 
-    // --- パーティクルシステム（エフェクト強弱対応） ---
+    // --- ハートパーティクルシステム（色とりどりパステルカラー、サイズ違い） ---
     const particles = [];
-    for (let i = 0; i < 45; i++) {
-      particles.push({
-        type: 'petal',
-        x: Math.random() * window.innerWidth,
-        y: Math.random() * window.innerHeight,
-        size: Math.random() * 12 + 8,
-        speedY: Math.random() * 1.4 + 0.7,
-        speedX: (Math.random() - 0.5) * 1.2,
-        rotation: Math.random() * 360,
-        rotSpeed: (Math.random() - 0.5) * 2.0,
-        swaySpeed: Math.random() * 0.012 + 0.006,
-        swayAmp: Math.random() * 40 + 20,
-        initialX: Math.random() * window.innerWidth,
-        opacity: Math.random() * 0.35 + 0.65,
-        colorVariant: Math.random() > 0.4 ? '#ffb7c5' : '#ffd1dc'
-      });
-    }
+    const pastelColors = ['#FFB6C1', '#FFD1DC', '#FFCCFF', '#E6E6FA', '#D8BFD8', '#B0E0E6', '#98FB98', '#FFFFE0']; // 7色+αのパステル
 
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 70; i++) {
       particles.push({
-        type: 'sparkle',
+        type: 'heart',
         x: Math.random() * window.innerWidth,
         y: Math.random() * window.innerHeight,
-        size: Math.random() * 3.5 + 1.2,
-        speedY: Math.random() * 0.7 + 0.2,
-        speedX: (Math.random() - 0.5) * 0.4,
-        opacity: Math.random() * 0.8 + 0.2
+        size: Math.random() * 15 + 6, // サイズ違い
+        speedY: Math.random() * 1.6 + 0.6,
+        speedX: (Math.random() - 0.5) * 1.0,
+        rotation: Math.random() * 360,
+        rotSpeed: (Math.random() - 0.5) * 1.8,
+        opacity: Math.random() * 0.4 + 0.5,
+        color: pastelColors[Math.floor(Math.random() * pastelColors.length)] // 色とりどり
       });
     }
 
     let timeCount = 0;
 
-    function drawPetal(ctx, p) {
+    // ハート描画関数 (1.pngのハートの形を参考に汎用的な形で実装)
+    function drawHeart(ctx, x, y, size, color, opacity) {
       ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate((p.rotation * Math.PI) / 180);
-      ctx.globalAlpha = p.opacity;
-
-      const grad = ctx.createRadialGradient(0, -p.size * 0.2, 0, 0, 0, p.size * 1.2);
-      grad.addColorStop(0, '#ffffff');
-      grad.addColorStop(0.4, p.colorVariant);
-      grad.addColorStop(1, '#ff7b93');
-
-      ctx.fillStyle = grad;
+      ctx.translate(x, y);
+      ctx.rotate((timeCount * 0.2) + x * 0.01); // 軽く揺らす
+      ctx.globalAlpha = opacity;
+      ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.moveTo(0, -p.size);
-      ctx.bezierCurveTo(p.size * 0.9, -p.size * 1.4, p.size * 1.2, p.size * 0.4, 0, p.size * 1.1);
-      ctx.bezierCurveTo(-p.size * 1.2, p.size * 0.4, -p.size * 0.9, -p.size * 1.4, 0, -p.size);
+      const d = size / 2;
+      ctx.moveTo(0, d / 2);
+      ctx.bezierCurveTo(0, 0, d, 0, d, d / 2);
+      ctx.bezierCurveTo(d, d, 0, d * 1.5, 0, size);
+      ctx.bezierCurveTo(0, d * 1.5, -d, d, -d, d / 2);
+      ctx.bezierCurveTo(-d, 0, 0, 0, 0, d / 2);
       ctx.fill();
-
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-      ctx.lineWidth = 0.8;
-      ctx.beginPath();
-      ctx.moveTo(0, -p.size * 0.7);
-      ctx.lineTo(0, p.size * 0.3);
-      ctx.stroke();
-
       ctx.restore();
     }
 
@@ -385,58 +376,61 @@
 
       ctx.clearRect(0, 0, logicalWidth, logicalHeight);
 
-      // --- A. フレームの描画（タッチ位置＆サイズ反映） ---
+      // --- A. フレームの描画（色変化実装） ---
       const floatOffsetY = Math.sin(timeCount * 1.5) * 6;
       const baseW = Math.min(logicalWidth * 0.75, 420) * frameScale;
-      const baseH = baseW * 1.414;
+      const baseH = baseW * 1.414; // アスペクト比
       const frameX = (logicalWidth - baseW) / 2 + frameOffsetX;
       const frameY = (logicalHeight - baseH) / 2 + floatOffsetY + frameOffsetY;
 
-      if (processedFrameImg) {
+      if (processedFrameImg && frameColorCanvas) {
+        // ゆっくり7色に変化させるロジック (HSLを使用)
+        const hue = (timeCount * 40) % 360; // 変化速度
+        const color = 'hsl(' + hue + ', 80%, 75%)'; // パステル調
+
         ctx.save();
-        ctx.shadowColor = 'rgba(228, 195, 139, 0.65)';
-        ctx.shadowBlur = 35;
-        ctx.drawImage(processedFrameImg, frameX, frameY, baseW, baseH);
+        ctx.shadowColor = 'hsl(' + hue + ', 80%, 65%)'; // 影の色も合わせる
+        ctx.shadowBlur = 45;
+
+        // 色変化の実装 (globalCompositeOperation)
+        frameColorCtx.clearRect(0, 0, frameColorCanvas.width, frameColorCanvas.height);
+        frameColorCtx.fillStyle = color;
+        frameColorCtx.fillRect(0, 0, frameColorCanvas.width, frameColorCanvas.height);
+
+        tempCtx.globalCompositeOperation = 'destination-in';
+        frameColorCtx.drawImage(processedFrameImg, 0, 0);
+        frameColorCtx.globalCompositeOperation = 'source-over'; // リセット
+
+        // メインCanvasに描画 (位置、サイズを反映)
+        ctx.drawImage(frameColorCanvas, frameX, frameY, baseW, baseH);
+
         ctx.restore();
-      } else {
-        ctx.strokeStyle = 'rgba(228, 195, 139, 0.85)';
+      } else if (!processedFrameImg) {
+        // 画像がない場合のフォールバックフレーム
+        const hue = (timeCount * 40) % 360;
+        ctx.strokeStyle = 'hsl(' + hue + ', 80%, 75%)';
         ctx.lineWidth = 5;
         ctx.strokeRect(frameX, frameY, baseW, baseH);
       }
 
-      // --- B. パーティクルの描写（エフェクト強弱係数適用） ---
+      // --- B. パーティクルの描写（ハートエフェクト） ---
       const activeCount = effectPowerLevel === 1 ? 0.4 : (effectPowerLevel === 2 ? 0.7 : 1.2);
 
       particles.forEach((p, index) => {
         p.y += p.speedY * activeCount;
-        if (p.type === 'petal') {
-          p.x = p.initialX + Math.sin(p.y * p.swaySpeed) * p.swayAmp;
-          p.rotation += p.rotSpeed;
+        p.x += p.speedX * activeCount * 0.5;
+        p.rotation += p.rotSpeed * activeCount;
 
-          if (p.y > logicalHeight + 40) {
-            p.y = -40;
-            p.initialX = Math.random() * logicalWidth;
-          }
-          if (effectPowerLevel > 0) drawPetal(ctx, p);
-        } else if (p.type === 'sparkle' && effectPowerLevel >= 2) {
-          p.x += p.speedX;
-          const pulse = 0.5 + Math.sin(timeCount * 5 + index * 1.5) * 0.5;
-          const currentAlpha = Math.max(0, p.opacity * pulse);
+        // 画面外リセット
+        if (p.y > logicalHeight + 40 || p.x < -40 || p.x > logicalWidth + 40) {
+          p.y = -40;
+          p.x = Math.random() * logicalWidth;
+          p.color = pastelColors[Math.floor(Math.random() * pastelColors.length)];
+        }
 
-          if (p.y > logicalHeight + 20) {
-            p.y = -20;
-            p.x = Math.random() * logicalWidth;
-          }
-
-          ctx.save();
-          ctx.globalAlpha = currentAlpha;
-          ctx.fillStyle = '#ffea9f';
-          ctx.shadowColor = '#fff3bf';
-          ctx.shadowBlur = 12;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size * (effectPowerLevel === 3 ? 1.3 : 1.0), 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
+        // ハート描画
+        if (effectPowerLevel > 0) {
+          drawHeart(ctx, p.x, p.y, p.size, p.color, p.opacity);
         }
       });
 
@@ -480,12 +474,12 @@
         saveCtx.restore();
       }
 
-      // 2. 現在のAR演出（移動・サイズ変更されたフレーム ＆ エフェクト）を合成
+      // 2. 現在のAR演出（移動・サイズ変更された色変化フレーム ＆ ハートエフェクト）を合成
       saveCtx.drawImage(arCanvas, 0, 0, logicalWidth, logicalHeight);
 
       // 3. 超高画質保存
       const link = document.createElement('a');
-      link.download = 'luxury_pro_hanami_' + Date.now() + '.png';
+      link.download = 'luxury_pro_heart_' + Date.now() + '.png';
       link.href = saveCanvas.toDataURL('image/png', 1.0);
       link.click();
     });
