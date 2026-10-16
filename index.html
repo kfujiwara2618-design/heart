@@ -11,7 +11,7 @@
       overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
       background: #000;
-      touch-action: none;
+      touch-action: none; /* デフォルトのタッチアクションを無効化 */
     }
     /* スマホカメラ映像 */
     #webcam {
@@ -73,12 +73,6 @@
       transition: all 0.2s;
       outline: none;
     }
-    .control-btn.active {
-      background: #e4c38b;
-      color: #1a1a1a;
-      border-color: #e4c38b;
-      font-weight: 600;
-    }
     .control-btn:active {
       transform: scale(0.95);
     }
@@ -135,17 +129,14 @@
 
   <!-- 上部プロフェッショナルコントロールパネル -->
   <div id="top-controls">
-    <button class="control-btn active" id="zoom-1x" onclick="setZoom(1)">1x</button>
-    <button class="control-btn" id="zoom-2x" onclick="setZoom(2)">2x</button>
-    <button class="control-btn" id="zoom-3x" onclick="setZoom(3)">3x</button>
-    <div style="width: 1px; height: 16px; background: rgba(228,195,139,0.3); margin: 0 2px;"></div>
+    <!-- ズームボタンを削除 -->
     <button class="control-btn" id="effect-btn" onclick="toggleEffectPower()">FX: Mid</button>
     <div style="width: 1px; height: 16px; background: rgba(228,195,139,0.3); margin: 0 2px;"></div>
     <button class="control-btn" onclick="switchCamera()">Cam ⟳</button>
   </div>
 
   <div id="info-overlay">
-    PRO MODE: <span id="status">READY</span> | エフェクト強弱はFXボタンで切り替え
+    PRO MODE: <span id="status">READY</span> | エフェクト強弱はFXボタンで切り替え | ピンチでズーム
   </div>
 
   <!-- ARレイヤー -->
@@ -167,16 +158,15 @@
 
     // --- カメラ＆ズーム・切り替えの状態管理 ---
     let currentZoom = 1;
+    const MIN_ZOOM = 1; // 最小ズーム
+    const MAX_ZOOM = 10; // 最大ズーム（適宜調整）
     let useFrontCamera = false;
     let currentStream = null;
 
-    function setZoom(level) {
-      currentZoom = level;
+    // ズームを適用する内部関数
+    function applyZoom(level) {
+      currentZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, level));
       webcamEl.style.transform = `scale(${currentZoom})`;
-      ['1x', '2x', '3x'].forEach(z => {
-        const btn = document.getElementById(`zoom-${z}`);
-        if (btn) btn.classList.toggle('active', z === `${level}x`);
-      });
     }
 
     async function initCamera() {
@@ -215,6 +205,49 @@
     }
 
     initCamera();
+
+    // --- ピンチズームの実装 ---
+    let initialPinchDistance = null;
+    let zoomStartValue = 1;
+
+    // 2点間の距離を計算する関数
+    function getPinchDistance(touches) {
+      if (touches.length < 2) return 0;
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    // タッチイベントリスナーを登録
+    window.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        // 2本指でタッチされた場合、初期距離とズーム値を保存
+        initialPinchDistance = getPinchDistance(e.touches);
+        zoomStartValue = currentZoom;
+        e.preventDefault(); // スクロールなどを防止
+      }
+    }, { passive: false }); // preventDefaultを使うため passive: false
+
+    window.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && initialPinchDistance !== null) {
+        // ピンチ操作中
+        const currentDistance = getPinchDistance(e.touches);
+        if (initialPinchDistance > 0) {
+          // 初期距離との比率から新しいズーム値を計算
+          const distance比Ptr = currentDistance / initialPinchDistance;
+          const newZoom = zoomStartValue * distance比Ptr;
+          applyZoom(newZoom);
+        }
+        e.preventDefault(); // スクロールなどを防止
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) {
+        // 2本指タッチが終了した場合、初期距離をリセット
+        initialPinchDistance = null;
+      }
+    });
 
     // --- 高解像度 (Retina) 対応のCanvasリサイズ処理 ---
     let dpr = window.devicePixelRatio || 1;
